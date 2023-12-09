@@ -1,4 +1,4 @@
-# Revealing Networks: Understanding Effective Teacher Practices in AI-Supported Classrooms using Transmodal Ordered Network Analysis
+# Teacher Practices in AI-Supported Classrooms
 
 Supplementary repository for LAK24 full paper "Revealing Networks: Understanding Effective Teacher Practices in AI-Supported Classrooms using Transmodal Ordered Network Analysis." Contains code for data pre-preprocessing, analytical and statistical exploration, analysis, and code that exploration and analysis is dependent upon.  
 
