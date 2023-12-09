@@ -30,6 +30,6 @@ Borchers C., Wang Y., Karumbaiah S., Ashiq M., Shaffer D. W., & Aleven V. Reveal
 - `datasets`: See "Data Availability" section below. 
 
 ## Data Availability 
-Data to reproduce all analyses conducted for this study can be requested via [CMU DataShop] (https://pslcdatashop.web.cmu.edu/DatasetInfo?datasetId=5833). 
+Data to reproduce all analyses conducted for this study can be requested via [CMU DataShop](https://pslcdatashop.web.cmu.edu/DatasetInfo?datasetId=5833). 
 
 
