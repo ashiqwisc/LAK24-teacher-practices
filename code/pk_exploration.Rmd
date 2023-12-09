@@ -1,0 +1,248 @@
+```{r message = FALSE}
+# remove.packages("ona")
+# remove.packages("tma")
+# install.packages("ona", repos = c("https://cran.qe-libs.org", "https://cran.rstudio.org"))
+# install.packages("tma", repos = c("https://cran.qe-libs.org", "https://cran.rstudio.org"))
+```
+
+```{r}
+library(ona)
+library(tma)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(zoo)
+```
+
+```{r}
+df <- read_csv("./datasets/final-sample-cb-lak24.csv")
+colnames(df)
+df["screenalignment_binary"][is.na(df["screenalignment_binary"])] <- 0
+df$mean_dist <-  rowSums(df[startsWith(names(df), "Stu_")], na.rm=TRUE)
+
+df$high_learning_rate[is.na(df$high_learning_rate)] <- "NA"
+df$high_ck_gain[is.na(df$high_ck_gain)] <- "NA"
+df$high_pk_gain[is.na(df$high_pk_gain)] <- "NA"
+
+
+df <- df[df$actor == "teacher" | df$high_ck_gain != "NA" | df$high_pk_gain != "NA" | df$high_learning_rate != "NA",]
+
+# df <- head(df,1000)
+```
+```{r}
+unit_cols <- c("dayID", "periodID", "actor", "high_pk_gain")
+
+code_cols_features <- c(
+  "Moving", "Stopping", "Talking", "Monitoring", "Raising_hand", "Misuse_State", "Idle_State", "Inactive", "Questioning", "Struggle_State", "screenalignment_binary", "Incorrect_attempt","Correct_attempt" 
+)
+code_cols_parameters <- c(
+  "Talking", "Monitoring", "Raising_hand", "Misuse_State", "Idle_State", "Inactive", "Questioning", "Struggle_State", "screenalignment_binary", "Incorrect_attempt","Correct_attempt" 
+)
+
+HOO_rules_model <- tma:::rules(
+  dayID %in% UNIT$dayID & periodID %in% UNIT$periodID
+)
+context_model <- tma:::contexts(
+  x = df,
+  units = unit_cols,
+  hoo_rules = HOO_rules_model
+)
+```
+
+
+1. Spatial Information as Features
+```{r}
+tma_spatial_feature <- tma:::accumulate_contexts (
+    x = context_model,
+    codes = code_cols_features,
+    weight.by = function(x) { x },
+    decay.function = function(x) {
+        modality_effect <- c("tutor" = 5, "detector" = 10, "position" = 15, "observation" = 20)
+        modality <- FULL_CONTEXT[ROWS, modality]
+        duration <- FULL_CONTEXT[ROWS, {  end - start }]
+        weight <- (x < (duration + modality_effect[modality])) * 1
+        # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) == "Stu_21faa7fce14fa69f7683c1c9371e5456"){
+        # print(weight)}
+        return (weight)
+    },
+    time.column = "start", 
+    return.ena.set = FALSE,
+    mode.column = "modality"
+) 
+View(tma_spatial_feature$connection.counts)
+```
+```{r}
+rotation.para <- list(high_pk_gain=tma_spatial_feature$meta.data$high_pk_gain == 1,
+       low_ck_gain=tma_spatial_feature$meta.data$high_pk_gain == 0)
+tma_spatial_feature_set <-
+  model(tma_spatial_feature,                                 # The previously run accumulation above
+        rotate.using ="mean",                  # Function provided by ONA
+        rotation.params = rotation.para  # The defined parameters for rotation
+        )
+tma_spatial_feature_set$connection.counts
+```
+
+```{r}
+node_size_multiplier <- 0.5
+plot(tma_spatial_feature_set, title = "Spatial Information as Features:
+     Low (red) vs high_pk_gain (blue)") %>%
+  units(
+    points = tma_spatial_feature_set$points$high_pk_gain$`0`,
+    points_color = "red",
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+  units(
+    points = tma_spatial_feature_set$points$high_pk_gain$`1`,
+    points_color = "blue",
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+  edges(
+    weights = (colMeans(tma_spatial_feature_set$line.weights$high_pk_gain$`0`) - colMeans(tma_spatial_feature_set$line.weights$high_pk_gain$`1`)) ,
+    # edge_size_multiplier = edge_size_multiplier,
+    # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("red","blue")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("red","blue"))
+plot(tma_spatial_feature_set, title = "Spatial Information as Features:
+     Low (red) vs high_pk_gain (blue)") %>%
+  units(
+    points = tma_spatial_feature_set$points$high_pk_gain$`0`,
+    points_color = "red",
+    show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+ 
+  edges(
+    weights = (colMeans(tma_spatial_feature_set$line.weights$high_pk_gain$`0`)) ,
+    # edge_size_multiplier = edge_size_multiplier,
+    # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("red")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("red"))
+
+plot(tma_spatial_feature_set, title = "Spatial Information as Features:
+     Low (red) vs high_pk_gain (blue)") %>%
+  units(
+    points = tma_spatial_feature_set$points$high_pk_gain$`1`,
+    points_color = "blue",
+    show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+ 
+  edges(
+    weights = (colMeans(tma_spatial_feature_set$line.weights$high_pk_gain$`1`)) ,
+    # edge_size_multiplier = edge_size_multiplier,
+    # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("blue")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("blue"))
+```
+2. Spatial Information as Parameters
+```{r}
+# Define accumulation function
+tma_spatial_parameter <- tma:::accumulate_contexts (
+    x = context_model,
+    codes = code_cols_parameters,
+    weight.by = function(x) { x },
+    decay.function = function(x) {
+        # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) != "teacher"){browser()}
+        # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) == "Stu_21faa7fce14fa69f7683c1c9371e5456"){browser()}
+        modality_effect <- c("tutor" = 5, "detector" = 10, "position" = 15, "observation" = 20)
+        modality <- FULL_CONTEXT[ROWS, modality]
+        duration <- FULL_CONTEXT[ROWS, {  end - start }]
+        distance <- rep(1, nrow(FULL_CONTEXT[ROWS, ]))
+        if(FULL_CONTEXT[RESPONSE_INDEX, actor] != "teacher"){
+            distance <- pull(select(FULL_CONTEXT[ROWS,],contains(paste0("i.",FULL_CONTEXT[ROWS, FULL_CONTEXT[RESPONSE_INDEX, actor]]))))
+            distance[which(is.na(distance))] <- mean(distance, na.rm = TRUE)
+            # distance <- zoo::na.fill(distance, "extend")
+        }
+        weight <- ((x < (duration + modality_effect[modality])) * 1/distance)
+        weight <- (weight/max(weight))
+        # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) == "Stu_21faa7fce14fa69f7683c1c9371e5456"){
+        # print(weight)}
+        return(weight)
+    },
+    time.column = "start", 
+    return.ena.set = FALSE,
+    mode.column = "modality"
+) 
+View(tma_spatial_parameter$connection.counts)
+
+```
+
+```{r}
+rotation.para <- list(high_pk_gain=tma_spatial_parameter$meta.data$high_pk_gain == 1,
+       low_ck_gain=tma_spatial_parameter$meta.data$high_pk_gain == 0)
+tma_spatial_parameter_set <-
+  model(tma_spatial_parameter,                                 # The previously run accumulation above
+        rotate.using ="mean",                  # Function provided by ONA
+        rotation.params = rotation.para   # The defined paremeters for rotation
+        )
+tma_spatial_parameter_set$connection.counts
+```
+
+
+```{r}
+node_size_multiplier <- 0.5
+plot(tma_spatial_parameter_set, title = "Spatial Information as Parameters:
+     Low (red) vs high_pk_gain (blue)") %>%
+  units(
+    points = tma_spatial_parameter_set$points$high_pk_gain$`0`,
+    points_color = "red",
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+  units(
+    points = tma_spatial_parameter_set$points$high_pk_gain$`1`, 
+    points_color = "blue",
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+  edges(
+    weights = (colMeans(tma_spatial_parameter_set$line.weights$high_pk_gain$`0`) - colMeans(tma_spatial_parameter_set$line.weights$high_pk_gain$`1`)) ,
+    # edge_size_multiplier = edge_size_multiplier,
+    # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("red","blue")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("red","blue"))
+
+
+plot(tma_spatial_parameter_set, title = "Spatial Information as Features:
+     Low (red) vs high_pk_gain (blue)") %>%
+  units(
+    points = tma_spatial_parameter_set$points$high_pk_gain$`0`,
+    points_color = "red",
+    show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+ 
+  edges(
+    weights = (colMeans(tma_spatial_parameter_set$line.weights$high_pk_gain$`0`)) ,
+    # edge_size_multiplier = edge_size_multiplier,
+    # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("red")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("red"))
+
+plot(tma_spatial_parameter_set, title = "Spatial Information as Features:
+     Low (red) vs high_pk_gain (blue)") %>%
+  units(
+    points = tma_spatial_parameter_set$points$high_pk_gain$`1`,
+    points_color = "blue",
+    show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+ 
+  edges(
+    weights = (colMeans(tma_spatial_parameter_set$line.weights$high_pk_gain$`1`)) ,
+    # edge_size_multiplier = edge_size_multiplier,
+    # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("blue")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("blue"))
+```
+

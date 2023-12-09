@@ -1,0 +1,891 @@
+---
+title: "R Notebook"
+---
+
+```{r message = FALSE}
+# remove.packages("ona")
+# remove.packages("tma")
+# install.packages("ona", repos = c("https://cran.qe-libs.org", "https://cran.rstudio.org"))
+# install.packages("tma", repos = c("https://cran.qe-libs.org", "https://cran.rstudio.org"))
+
+```
+
+```{r}
+library(ona)
+library(tma)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(zoo)
+library(effectsize)
+```
+
+```{r}
+df <- read_csv("./datasets/final-sample-cb-lak24.csv")
+colnames(df)
+# Replace NA with 0
+df["screenalignment_binary"][is.na(df["screenalignment_binary"])] <- 0
+df$mean_dist <-  rowSums(df[startsWith(names(df), "Stu_")], na.rm=TRUE)
+# Meta data
+learning_meta_data_cols <- c("high_learning_rate", "high_ck_gain", "high_pk_gain", "high_ck_pre", "high_pk_pre")
+df[df$actor == "teacher",learning_meta_data_cols] <- -1
+
+```
+
+
+```{r}
+# df <- df[df$actor == "teacher" | df$high_ck_gain != "NA" | df$high_pk_gain != "NA" | df$high_learning_rate != "NA" | df$high_ck_pre != "NA" | df$high_pk_pre != "NA",]
+df <- df %>% drop_na(high_learning_rate)
+# View(df)
+
+```
+
+```{r}
+all_code_cols <- c(
+  "Moving", "Stopping", "Talking", "Monitoring", "Raising_hand", "Misuse_State", "Idle_State", 
+  "Inactive", "Questioning",
+  "Struggle_State", "screenalignment_binary", 
+  "hint_request", 
+  "first_correct_attempt",
+  "Incorrect_attempt","Correct_attempt"
+)
+tutor <- c(
+  # "Moving",
+  # "Stopping", "Talking", 
+  # "Monitoring",
+  # # "Raising_hand", 
+  # "Misuse_State", "Idle_State", 
+  # # "Inactive", "Questioning",
+  # "Struggle_State", 
+  # "screenalignment_binary", 
+  "hint_request", 
+  "first_correct_attempt",
+  "Incorrect_attempt",
+  "Correct_attempt"
+)
+
+tutor_and_detector <- c(
+  # "Moving",
+  # "Stopping", "Talking", 
+  # "Monitoring",
+  # "Raising_hand", 
+  "Misuse_State", "Idle_State", 
+  # "Inactive", "Questioning",
+  "Struggle_State", 
+  # "screenalignment_binary", 
+  "hint_request", 
+  "first_correct_attempt",
+  "Incorrect_attempt",
+  "Correct_attempt"
+)
+
+tutor_and_detector_and_teacher <- c(
+  "Talking", 
+  # "Monitoring",
+  "Raising_hand", "Misuse_State", "Idle_State", 
+  # "Inactive", "Questioning",
+  "Struggle_State", "screenalignment_binary", 
+  "hint_request", 
+  "first_correct_attempt",
+  "Incorrect_attempt",
+  "Correct_attempt"
+)
+
+tutor_and_detector_and_teacher_and_spatial <- c(
+  "Moving",
+  "Stopping", "Talking", 
+  # "Monitoring",
+  "Raising_hand", "Misuse_State", "Idle_State", 
+  # "Inactive", "Questioning",
+  "Struggle_State", "screenalignment_binary", 
+  "hint_request", 
+  "first_correct_attempt",
+  "Incorrect_attempt",
+  "Correct_attempt"
+)
+
+code_cols_features <- c(
+  "Moving",
+  "Stopping", "Talking",
+  # "Monitoring",
+  "Raising_hand", "Misuse_State", "Idle_State",
+  # "Inactive", "Questioning",
+  "Struggle_State", "screenalignment_binary",
+  "hint_request",
+  "first_correct_attempt",
+  "Incorrect_attempt",
+  "Correct_attempt"
+)
+code_cols_parameters <- c(
+  "Talking",
+  # "Monitoring",
+  "Raising_hand", "Misuse_State", "Idle_State",
+  # "Inactive", "Questioning",
+  "Struggle_State", "screenalignment_binary",
+  "hint_request",
+  "first_correct_attempt",
+  "Incorrect_attempt",
+  "Correct_attempt"
+)
+
+base_rate_df <- colSums(df[,all_code_cols]) / nrow(df) 
+round(base_rate_df,4)
+
+```
+
+
+```{r}
+unit_cols <- c("dayID", "periodID", "actor", "high_learning_rate")
+# Hint, first-correct-attempt
+# Prior knowledge
+# HOO_rules_model <- tma:::rules(
+#   dayID %in% UNIT$dayID & periodID %in% UNIT$periodID
+# )
+HOO_rules_model <- tma:::rules(
+  dayID %in% UNIT$dayID & periodID %in% UNIT$periodID & actor %in% UNIT$actor, 
+  dayID %in% UNIT$dayID & periodID %in% UNIT$periodID & actor == "teacher"
+)
+context_model <- tma:::contexts(
+  x = df,
+  units = unit_cols,
+  hoo_rules = HOO_rules_model
+)
+```
+1. tutor
+```{r}
+# tutor <- tma:::accumulate_contexts (
+#     x = context_model,
+#     codes = tutor,
+#     weight.by = function(x) { x },
+#     decay.function = function(x) {
+#         modality_effect <- c("tutor" = 5, "detector" = 10, "position" = 15, "observation" = 20)
+#         modality <- FULL_CONTEXT[ROWS, modality]
+#         duration <- FULL_CONTEXT[ROWS, {  end - start }]
+#         weight <- (x < (duration + modality_effect[modality])) * 1
+#         # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) == "Stu_21faa7fce14fa69f7683c1c9371e5456"){
+#         # print(weight)}
+#         return (weight)
+#     },
+#     time.column = "start", 
+#     return.ena.set = FALSE,
+#     mode.column = "modality"
+# ) 
+# 
+# rotation.para <- list(high_learning_rate=tutor$meta.data$high_learning_rate == 1,
+#        low_learning_rate=tutor$meta.data$high_learning_rate == 0)
+# tutor_set <-
+#   model(tutor,                                 # The previously run accumulation above
+#         rotate.using ="mean",                  # Function provided by ONA
+#         rotation.params = rotation.para  # The defined parameters for rotation
+#         )
+```
+
+```{r}
+# node_size_multiplier <- 0.5
+# tutor_set$points$MR1 <- (-1)*(tutor_set$points$MR1)
+# tutor_set$points$SVD2 <- (-1)*(tutor_set$points$SVD2)
+#
+# tutor_set$rotation$nodes$MR1<- (-1)*(tutor_set$rotation$nodes$MR1)
+# tutor_set$rotation$nodes$SVD2 <- (-1)*(tutor_set$rotation$nodes$SVD2)
+# 
+# ona:::plot.ena.directed.set(tutor_set, title = "tutor only:
+#      Low (red) vs high_learning_rate (blue)") %>%
+#   units(
+#     points = tutor_set$points$high_learning_rate$`0`,
+#     points_color = "red",
+#     show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+#   units(
+#     points = tutor_set$points$high_learning_rate$`1`,
+#     points_color = "blue",
+#     show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+#   edges(
+#     weights = (colMeans(tutor_set$line.weights$high_learning_rate$`0`) - colMeans(tutor_set$line.weights$high_learning_rate$`1`)) ,
+#     # edge_size_multiplier = edge_size_multiplier,
+#     # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     edge_color = c("red","blue")) %>%
+#   nodes(
+#    node_size_multiplier = node_size_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     self_connection_color = c("red","blue"))
+# ona:::plot.ena.directed.set(tutor_set, title = "tutor only:
+#      Low (red) vs high_learning_rate (blue)") %>%
+#   units(
+#     points = tutor_set$points$high_learning_rate$`0`,
+#     points_color = "red",
+#     show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+# 
+#   edges(
+#     weights = (colMeans(tutor_set$line.weights$high_learning_rate$`0`)) ,
+#     # edge_size_multiplier = edge_size_multiplier,
+#     # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     edge_color = c("red")) %>%
+#   nodes(
+#    node_size_multiplier = node_size_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     self_connection_color = c("red"))
+# 
+# ona:::plot.ena.directed.set(tutor_set, title = "tutor only:
+#      Low (red) vs high_learning_rate (blue)") %>%
+#   units(
+#     points = tutor_set$points$high_learning_rate$`1`,
+#     points_color = "blue",
+#     show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+# 
+#   edges(
+#     weights = (colMeans(tutor_set$line.weights$high_learning_rate$`1`)) ,
+#     # edge_size_multiplier = edge_size_multiplier,
+#     # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     edge_color = c("blue")) %>%
+#   nodes(
+#    node_size_multiplier = node_size_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     self_connection_color = c("blue"))
+```
+2. tutor_and_detector
+```{r}
+# tutor_and_detector <- tma:::accumulate_contexts (
+#     x = context_model,
+#     codes = tutor_and_detector,
+#     weight.by = function(x) { x },
+#     decay.function = function(x) {
+#         modality_effect <- c("tutor" = 5, "detector" = 10, "position" = 15, "observation" = 20)
+#         modality <- FULL_CONTEXT[ROWS, modality]
+#         duration <- FULL_CONTEXT[ROWS, {  end - start }]
+#         weight <- (x < (duration + modality_effect[modality])) * 1
+#         # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) == "Stu_21faa7fce14fa69f7683c1c9371e5456"){
+#         # print(weight)}
+#         return (weight)
+#     },
+#     time.column = "start", 
+#     return.ena.set = FALSE,
+#     mode.column = "modality"
+# ) 
+# 
+# rotation.para <- list(high_learning_rate=tutor_and_detector$meta.data$high_learning_rate == 1,
+#        low_learning_rate=tutor_and_detector$meta.data$high_learning_rate == 0)
+# tutor_and_detector_set <-
+#   model(tutor_and_detector,                                 # The previously run accumulation above
+#         rotate.using ="mean",                  # Function provided by ONA
+#         rotation.params = rotation.para  # The defined parameters for rotation
+#         )
+# ```
+# 
+# ```{r}
+# node_size_multiplier <- 0.3
+# edge_size_multiplier <- 0.5
+# edge_arrow_saturation_multiplier <- 2
+# # tutor_and_detector_set$points$MR1 <- (-1)*(tutor_and_detector_set$points$MR1)
+# # # tutor_and_detector_set$points$SVD2 <- (-1)*(tutor_set$points$SVD2)
+# # 
+# # tutor_and_detector_set$rotation$nodes$MR1<- (-1)*(tutor_and_detector_set$rotation$nodes$MR1)
+# # # tutor_and_detector_set$rotation$nodes$SVD2 <- (-1)*(tutor_and_detector_set$rotation$nodes$SVD2)
+# 
+# ona:::plot.ena.directed.set(tutor_and_detector_set,
+#   title = "TMA Model with In-Tutor Actions: 
+#   Low (red) vs high_learning_rate (blue)"
+#   ) %>%
+#   units(
+#     points = tutor_and_detector_set$points$high_learning_rate$`0`,
+#     points_color = "red",
+#     show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+#   units(
+#     points = tutor_and_detector_set$points$high_learning_rate$`1`,
+#     points_color = "blue",
+#     show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+#   edges(
+#     weights = (colMeans(tutor_and_detector_set$line.weights$high_learning_rate$`0`) - colMeans(tutor_and_detector_set$line.weights$high_learning_rate$`1`)) ,
+#     edge_size_multiplier = edge_size_multiplier,
+#     edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     edge_color = c("red","blue")) %>%
+#   nodes(
+#    node_size_multiplier = node_size_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     self_connection_color = c("red","blue"))
+# ona:::plot.ena.directed.set(tutor_and_detector_set, title = "Low Learning Rate (red)") %>%
+#   units(
+#     points = tutor_and_detector_set$points$high_learning_rate$`0`,
+#     points_color = "red",
+#     show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+# 
+#   edges(
+#     weights = (colMeans(tutor_and_detector_set$line.weights$high_learning_rate$`0`)) ,
+#     edge_size_multiplier = edge_size_multiplier,
+#     edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     edge_color = c("red")) %>%
+#   nodes(
+#    node_size_multiplier = node_size_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     self_connection_color = c("red"))
+# 
+# ona:::plot.ena.directed.set(tutor_and_detector_set, title = "High Learning Rate (blue)") %>%
+#   units(
+#     points = tutor_and_detector_set$points$high_learning_rate$`1`,
+#     points_color = "blue",
+#     show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+#   edges(
+#     weights = (colMeans(tutor_and_detector_set$line.weights$high_learning_rate$`1`)) ,
+#     edge_size_multiplier = edge_size_multiplier,
+#     edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     edge_color = c("blue")) %>%
+#   nodes(
+#    node_size_multiplier = node_size_multiplier,
+#    # node_position_multiplier = node_position_multiplier,
+#     self_connection_color = c("blue"))
+```
+3. tutor_and_detector_and_teacher
+```{r}
+tma_spatial_no_spatial <- tma:::accumulate_contexts (
+    x = context_model,
+    codes = code_cols_parameters,
+    weight.by = function(x) { x },
+    decay.function = function(x) {
+        modality_effect <- c("tutor" = 5, "detector" = 10, "position" = 15, "observation" = 20)
+        modality <- FULL_CONTEXT[ROWS, modality]
+        duration <- FULL_CONTEXT[ROWS, {  end - start }]
+        weight <- (x < (duration + modality_effect[modality])) * 1
+        # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) == "Stu_21faa7fce14fa69f7683c1c9371e5456"){
+        # print(weight)}
+        return (weight)
+    },
+    time.column = "start",
+    return.ena.set = FALSE,
+    mode.column = "modality"
+)
+# View(tma_spatial_no_spatial$connection.counts)
+```
+
+```{r}
+rotation.para <- list(high_learning_rate=tma_spatial_no_spatial$meta.data$high_learning_rate == 1,
+       low_learning_rate=tma_spatial_no_spatial$meta.data$high_learning_rate == 0)
+tutor_and_detector_and_teacher_set <-
+  model(tma_spatial_no_spatial,                                 # The previously run accumulation above
+        rotate.using ="mean",                  # Function provided by ONA
+        rotation.params = rotation.para  # The defined parameters for rotation
+        )
+# tutor_and_detector_and_teacher_set$connection.counts
+```
+
+```{r}
+node_size_multiplier <- 0.3
+edge_size_multiplier <- 0.5
+edge_arrow_saturation_multiplier <- 2
+tutor_and_detector_and_teacher_set$points$MR1 <- (-1)*(tutor_and_detector_and_teacher_set$points$MR1)
+# tutor_and_detector_and_teacher_set$points$SVD2 <- (-1)*(tutor_and_detector_and_teacher_set$points$SVD2)
+
+tutor_and_detector_and_teacher_set$rotation$nodes$MR1<- (-1)*(tutor_and_detector_and_teacher_set$rotation$nodes$MR1)
+# tutor_and_detector_and_teacher_set$rotation$nodes$SVD2 <- (-1)*(tutor_and_detector_and_teacher_set$rotation$nodes$SVD2)
+
+ona:::plot.ena.directed.set(tutor_and_detector_and_teacher_set, title = "TMA Model with In-Tutor Actions and Out-of-Tutor Interactions: 
+                            Low (red) vs high_learning_rate (blue)") %>%
+  units(
+    points = tutor_and_detector_and_teacher_set$points$high_learning_rate$`0`,
+    points_color = "red",
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+  units(
+    points = tutor_and_detector_and_teacher_set$points$high_learning_rate$`1`,
+    points_color = "blue",
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+  edges(
+    weights = (colMeans(tutor_and_detector_and_teacher_set$line.weights$high_learning_rate$`0`) - colMeans(tutor_and_detector_and_teacher_set$line.weights$high_learning_rate$`1`)) ,
+    edge_size_multiplier = edge_size_multiplier,
+    edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("red","blue")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+      node_labels = FALSE,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("red","blue"))
+
+ona:::plot.ena.directed.set(tutor_and_detector_and_teacher_set, title = "Low Learning Rate (red)") %>%
+  units(
+    points = tutor_and_detector_and_teacher_set$points$high_learning_rate$`0`,
+    points_color = "red",
+    show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+
+  edges(
+    weights = (colMeans(tutor_and_detector_and_teacher_set$line.weights$high_learning_rate$`0`)) ,
+    edge_size_multiplier = edge_size_multiplier,
+    edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("red")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+      node_labels = FALSE,
+    self_connection_color = c("red"))
+
+ona:::plot.ena.directed.set(tutor_and_detector_and_teacher_set, title = "High Learning Rate (blue)") %>%
+  units(
+    points = tutor_and_detector_and_teacher_set$points$high_learning_rate$`1`,
+    points_color = "blue",
+    show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+
+  edges(
+    weights = (colMeans(tutor_and_detector_and_teacher_set$line.weights$high_learning_rate$`1`)) ,
+    edge_size_multiplier = edge_size_multiplier,
+    edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("blue")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+   node_labels = FALSE,
+    self_connection_color = c("blue"))
+```
+
+4.1. Spatial Information as Features
+```{r}
+tma_spatial_feature <- tma:::accumulate_contexts (
+    x = context_model,
+    codes = code_cols_features,
+    weight.by = function(x) { x },
+    decay.function = function(x) {
+        modality_effect <- c("tutor" = 5, "detector" = 10, "position" = 15, "observation" = 20)
+        modality <- FULL_CONTEXT[ROWS, modality]
+        duration <- FULL_CONTEXT[ROWS, {  end - start }]
+        weight <- (x < (duration + modality_effect[modality])) * 1
+        # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) == "Stu_21faa7fce14fa69f7683c1c9371e5456"){
+        # print(weight)}
+        return (weight)
+    },
+    time.column = "start", 
+    return.ena.set = FALSE,
+    mode.column = "modality"
+) 
+# View(tma_spatial_feature$connection.counts)
+```
+```{r}
+rotation.para <- list(high_learning_rate=tma_spatial_feature$meta.data$high_learning_rate == 1,
+       low_learning_rate=tma_spatial_feature$meta.data$high_learning_rate == 0)
+tma_spatial_feature_set <-
+  model(tma_spatial_feature,                                 # The previously run accumulation above
+        rotate.using ="mean",                  # Function provided by ONA
+        rotation.params = rotation.para  # The defined parameters for rotation
+        )
+tma_spatial_feature_set$connection.counts
+```
+
+```{r}
+node_size_multiplier <- 0.3
+edge_size_multiplier <- 0.5
+edge_arrow_saturation_multiplier <- 2
+# tma_spatial_feature_set$points$MR1 <- (-1)*(tma_spatial_feature_set$points$MR1)
+# tma_spatial_feature_set$points$SVD2 <- (-1)*(tma_spatial_feature_set$points$SVD2)
+# 
+# tma_spatial_feature_set$rotation$nodes$MR1<- (-1)*(tma_spatial_feature_set$rotation$nodes$MR1)
+# tma_spatial_feature_set$rotation$nodes$SVD2 <- (-1)*(tma_spatial_feature_set$rotation$nodes$SVD2)
+
+ona:::plot.ena.directed.set(tma_spatial_feature_set, title = "Spatial Information as Features:
+     Low (red) vs high_learning_rate (blue)") %>%
+  units(
+    points = tma_spatial_feature_set$points$high_learning_rate$`0`,
+    points_color = "red",
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+  units(
+    points = tma_spatial_feature_set$points$high_learning_rate$`1`,
+    points_color = "blue",
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+  edges(
+    weights = (colMeans(tma_spatial_feature_set$line.weights$high_learning_rate$`0`) - colMeans(tma_spatial_feature_set$line.weights$high_learning_rate$`1`)) ,
+    edge_size_multiplier = edge_size_multiplier,
+    edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("red","blue")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("red","blue"))
+ona:::plot.ena.directed.set(tma_spatial_feature_set, title = "Spatial Information as Features:
+     Low (red) vs high_learning_rate (blue)") %>%
+  units(
+    points = tma_spatial_feature_set$points$high_learning_rate$`0`,
+    points_color = "red",
+    show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+
+  edges(
+    weights = (colMeans(tma_spatial_feature_set$line.weights$high_learning_rate$`0`)) ,
+    edge_size_multiplier = edge_size_multiplier,
+    edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("red")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("red"))
+
+ona:::plot.ena.directed.set(tma_spatial_feature_set, title = "Spatial Information as Features:
+     Low (red) vs high_learning_rate (blue)") %>%
+  units(
+    points = tma_spatial_feature_set$points$high_learning_rate$`1`,
+    points_color = "blue",
+    show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+
+  edges(
+    weights = (colMeans(tma_spatial_feature_set$line.weights$high_learning_rate$`1`)) ,
+    edge_size_multiplier = edge_size_multiplier,
+    edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("blue")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("blue"))
+```
+4.2. Spatial Information as Parameters
+```{r}
+# Define accumulation function
+tma_spatial_parameter <- tma:::accumulate_contexts (
+    x = context_model,
+    codes = code_cols_parameters,
+    weight.by = function(x) { x },
+    decay.function = function(x) {
+        # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) != "teacher"){browser()}
+        # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) == "Stu_21faa7fce14fa69f7683c1c9371e5456"){browser()}
+        modality_effect <- c("tutor" = 5, "detector" = 10, "position" = 15, "observation" = 20)
+        # observation: distance makes more sense
+        modality <- FULL_CONTEXT[ROWS, modality]
+        duration <- FULL_CONTEXT[ROWS, {  end - start }]
+        distance <- rep(1, nrow(FULL_CONTEXT[ROWS, ]))
+        if(FULL_CONTEXT[RESPONSE_INDEX, actor] != "teacher"){
+            distance <- pull(select(FULL_CONTEXT[ROWS,],contains(paste0("i.",FULL_CONTEXT[ROWS, FULL_CONTEXT[RESPONSE_INDEX, actor]]))))
+            distance[which(is.na(distance))] <- mean(distance, na.rm = TRUE)
+            # distance <- zoo::na.fill(distance, "extend")
+        }
+        weight <- ((x < (duration + modality_effect[modality])) * 1/distance)
+        weight <- (weight/max(weight))
+        # weight <- (weight/sqrt(sum(distance^2)))
+        # if(unique(FULL_CONTEXT[RESPONSE_INDEX, actor]) == "Stu_21faa7fce14fa69f7683c1c9371e5456"){
+        # browser()}
+        return(weight)
+    },
+    time.column = "start", 
+    return.ena.set = FALSE,
+    mode.column = "modality"
+) 
+# View(tma_spatial_parameter$connection.counts)
+
+rotation.para <- list(high_learning_rate=tma_spatial_parameter$meta.data$high_learning_rate == 1,
+       low_learning_rate=tma_spatial_parameter$meta.data$high_learning_rate == 0)
+tma_spatial_parameter_set <-
+  model(tma_spatial_parameter,                                 # The previously run accumulation above
+        rotate.using ="mean",                  # Function provided by ONA
+        rotation.params = rotation.para   # The defined paremeters for rotation
+        )
+tma_spatial_parameter_set$connection.counts
+```
+
+
+```{r}
+node_size_multiplier <- 0.5
+# tma_spatial_parameter_set$points$MR1 <- (-1)*(tma_spatial_parameter_set$points$MR1)
+tma_spatial_parameter_set$points$SVD2 <- (-1)*(tma_spatial_parameter_set$points$SVD2)
+
+# tma_spatial_parameter_set$rotation$nodes$MR1<- (-1)*(tma_spatial_parameter_set$rotation$nodes$MR1)
+tma_spatial_parameter_set$rotation$nodes$SVD2 <- (-1)*(tma_spatial_parameter_set$rotation$nodes$SVD2)
+
+ona:::plot.ena.directed.set(tma_spatial_parameter_set, title = "Spatial Information as parameters:
+     Low (red) vs high_learning_rate (blue)") %>%
+  units(
+    points = tma_spatial_parameter_set$points$high_learning_rate$`0`,
+    points_color = "red",
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+  units(
+    points = tma_spatial_parameter_set$points$high_learning_rate$`1`,
+    points_color = "blue",
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE) %>%
+  edges(
+    weights = (colMeans(tma_spatial_parameter_set$line.weights$high_learning_rate$`0`) - colMeans(tma_spatial_parameter_set$line.weights$high_learning_rate$`1`)) ,
+    edge_size_multiplier = 1.2,
+    # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("red","blue")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("red","blue"))
+
+
+ona:::plot.ena.directed.set(tma_spatial_parameter_set, title = "Spatial Information as parameters:
+     Low (red) vs high_learning_rate (blue)") %>%
+  units(
+    points = tma_spatial_parameter_set$points$high_learning_rate$`0`,
+    points_color = "red",
+    show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+
+  edges(
+    weights = (colMeans(tma_spatial_parameter_set$line.weights$high_learning_rate$`0`)) ,
+    # edge_size_multiplier = edge_size_multiplier,
+    # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("red")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("red"))
+
+ona:::plot.ena.directed.set(tma_spatial_parameter_set, title = "Spatial Information as parameters:
+     Low (red) vs high_learning_rate (blue)") %>%
+  units(
+    points = tma_spatial_parameter_set$points$high_learning_rate$`1`,
+    points_color = "blue",
+    show_mean = TRUE, show_points = TRUE, with_ci = TRUE) %>%
+
+  edges(
+    weights = (colMeans(tma_spatial_parameter_set$line.weights$high_learning_rate$`1`)) ,
+    # edge_size_multiplier = edge_size_multiplier,
+    # edge_arrow_saturation_multiplier = edge_arrow_saturation_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    edge_color = c("blue")) %>%
+  nodes(
+   node_size_multiplier = node_size_multiplier,
+   # node_position_multiplier = node_position_multiplier,
+    self_connection_color = c("blue"))
+```
+
+```{r}
+ona:::correlations(tutor_set)$pearson[[1]]
+tutor_set_df <- as.data.frame(tutor_set$points) %>%
+  filter(high_learning_rate != -1) 
+# logit_t <- glm(high_learning_rate ~ MR1, data = tutor_set_df, family = "binomial")
+logit_t <- glm(high_learning_rate ~ MR1+SVD2, data = tutor_set_df, family = "binomial")
+
+logit_t$aic
+low <- tutor_set_df[tutor_set_df$high_learning_rate == 0,]$MR1
+high <- tutor_set_df[tutor_set_df$high_learning_rate == 1,]$MR1
+wilcox.test(low, high)  # Using wilcox test instead
+rank_biserial(low, high) 
+```
+
+```{r}
+ona:::correlations(tutor_and_detector_set)$pearson[[1]]
+tutor_d_set_df <- as.data.frame(tutor_and_detector_set$points) %>%
+    filter(high_learning_rate != -1) 
+logit_t_d <- glm(high_learning_rate ~ MR1, data = tutor_d_set_df, family = "binomial")
+logit_t_d$aic
+low <- tutor_d_set_df[tutor_d_set_df$high_learning_rate == 0,]$MR1
+high <- tutor_d_set_df[tutor_d_set_df$high_learning_rate == 1,]$MR1
+wilcox.test(low, high)  # Using wilcox test instead
+rank_biserial(low, high)
+```
+
+```{r}
+ona:::correlations(tutor_and_detector_and_teacher_set)$pearson[[1]]
+tutor_d_t_set_df <- as.data.frame(tutor_and_detector_and_teacher_set$points) %>%
+   filter(high_learning_rate != -1) 
+logit_t_d_t <- glm(high_learning_rate ~ MR1, data = tutor_d_t_set_df, family = "binomial")
+logit_t_d_t$aic
+low <- tutor_d_t_set_df[tutor_d_t_set_df$high_learning_rate == 0,]$MR1
+high <- tutor_d_t_set_df[tutor_d_t_set_df$high_learning_rate == 1,]$MR1
+wilcox.test(low, high)  # Using wilcox test instead
+rank_biserial(low, high)
+```
+
+```{r}
+ona:::correlations(tma_spatial_feature_set)$pearson[[1]]
+spat_feat <- as.data.frame(tma_spatial_feature_set$points) %>%
+   filter(high_learning_rate != -1) 
+logit_spat_feat <- glm(high_learning_rate ~ MR1, data = spat_feat, family = "binomial")
+logit_spat_feat$aic
+low <- spat_feat[spat_feat$high_learning_rate == 0,]$MR1
+high <- spat_feat[spat_feat$high_learning_rate == 1,]$MR1
+wilcox.test(low, high)  # Using wilcox test instead
+rank_biserial(low, high)
+```
+
+```{r}
+ona:::correlations(tma_spatial_parameter_set)$pearson[[1]]
+spat_param <- as.data.frame(tma_spatial_parameter_set$points) %>%
+  filter(high_learning_rate != -1)
+logit_spat_param <- glm(high_learning_rate ~ MR1, data = spat_param, family = "binomial")
+logit_spat_param$aic
+low <- spat_param[spat_param$high_learning_rate == 0,]$MR1
+high <- spat_param[spat_param$high_learning_rate == 1,]$MR1
+wilcox.test(low, high)  # Using wilcox test instead
+rank_biserial(low, high)
+```
+
+```{r}
+summary(anova(logit_t, logit_t_d, test = "Chisq"))
+anova(logit_t_d, logit_t_d_t, test = "Chisq")
+anova(logit_t_d_t, logit_spat_feat, test = "Chisq")
+anova(logit_t_d_t, logit_spat_param, test = "Chisq")
+```
+
+## AIC bootstrap
+```{r}
+# glm(high_learning_rate ~ MR1+SVD2, data = as.data.frame(tutor_set$points) %>%
+#   filter(high_learning_rate != -1), family = "binomial")
+glm(high_learning_rate ~ MR1+SVD2, data = as.data.frame(tutor_and_detector_set$points) %>%
+  filter(high_learning_rate != -1), family = "binomial")
+glm(high_learning_rate ~ MR1+SVD2, data = as.data.frame(tutor_and_detector_and_teacher_set$points) %>%
+  filter(high_learning_rate != -1), family = "binomial")
+glm(high_learning_rate ~ MR1+SVD2, data = as.data.frame(tma_spatial_feature_set$points) %>%
+  filter(high_learning_rate != -1), family = "binomial")
+glm(high_learning_rate ~ MR1+SVD2, data = as.data.frame(tma_spatial_parameter_set$points) %>%
+  filter(high_learning_rate != -1), family = "binomial")
+```
+
+```{r}
+source("./bootstrap_aic.R")
+# model_1_2 <- bootstrap_aic(tutor_set, tutor_and_detector_set, sample.size = 1000)
+model_2_3 <- bootstrap_aic(tutor_and_detector_set, tutor_and_detector_and_teacher_set, sample.size = 1000)
+model_3_4.1 <- bootstrap_aic(tutor_and_detector_and_teacher_set, tma_spatial_feature_set, sample.size = 1000)
+# model_3_4.2 <- bootstrap_aic(tutor_and_detector_and_teacher_set, tma_spatial_parameter_set, sample.size = 1000)
+# model_4.1_4.2 <- bootstrap_aic(tma_spatial_feature_set, tma_spatial_parameter_set, sample.size = 1000)
+
+```
+Added analysis: 
+line weights 
+```{r}
+colMeans(tutor_and_detector_set$line.weights$high_learning_rate$`0`) - colMeans(tutor_and_detector_set$line.weights$high_learning_rate$`1`)
+```
+
+# Statistical analysis
+```{r}
+# tutor
+# tutor_data_low <- as.data.frame(tutor_and_detector_set$line.weights) %>%
+#   filter(high_learning_rate == 0)
+# tutor_data_high <- as.data.frame(tutor_and_detector_set$line.weights) %>%
+#   filter(high_learning_rate == 1)
+
+# Hint req -> Hint req 
+# low <- tutor_data_low$`hint_request & hint_request`
+# high <- tutor_data_high$`hint_request & hint_request`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+# first correct attempt -> first correct attempt 
+# low <- tutor_data_low$`first_correct_attempt & first_correct_attempt`
+# high <- tutor_data_high$`first_correct_attempt & first_correct_attempt`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+# correct attempt -> correct attempt 
+# low <- tutor_data_low$`Correct_attempt & Correct_attempt`
+# high <- tutor_data_high$`Correct_attempt & Correct_attempt`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+# correct attempt -> hint request 
+# low <- tutor_data_low$`Correct_attempt & hint_request`
+# high <- tutor_data_high$`Correct_attempt & hint_request`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+# first correct attempt -> correct attempt 
+# low <- tutor_data_low$`first_correct_attempt & Correct_attempt`
+# high <- tutor_data_high$`first_correct_attempt & Correct_attempt`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+# idling -> hint request 
+# low <- tutor_data_low$`Idle_State & hint_request`
+# high <- tutor_data_high$`Idle_State & hint_request`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+
+# score medians tutor
+# scores_tutor_low <- as.data.frame(tutor_and_detector_set$points) %>%
+#   filter(high_learning_rate == 0)
+# scores_tutor_low <- scores_tutor_low$MR1
+# scores_tutor_high <- as.data.frame(tutor_and_detector_set$points) %>%
+#   filter(high_learning_rate == 1)
+# scores_tutor_high = scores_tutor_high$MR1
+# 
+# median(scores_tutor_low)
+# median(scores_tutor_high)
+# wilcox.test(scores_tutor_low, scores_tutor_high)
+# rank_biserial(scores_tutor_low, scores_tutor_high)
+```
+
+```{r}
+# tutor + out-of-tutor
+tutor_plus_data_low <- as.data.frame(tutor_and_detector_and_teacher_set$line.weights) %>%
+  filter(high_learning_rate == 0)
+tutor_plus_data_high <- as.data.frame(tutor_and_detector_and_teacher_set$line.weights) %>%
+  filter(high_learning_rate == 1)
+
+# hint req -> hint req
+# low <- tutor_plus_data_low$`hint_request & hint_request`
+# high <- tutor_plus_data_high$`hint_request & hint_request`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+# first correct attempt -> correct attempt
+low <- tutor_plus_data_low$`first_correct_attempt & Correct_attempt`
+high <- tutor_plus_data_high$`first_correct_attempt & Correct_attempt`
+median(low)
+median(high)
+wilcox.test(low, high)
+rank_biserial(low, high)
+
+# screen alignment -> hint req
+# low <- tutor_plus_data_low$`screenalignment_binary & hint_request`
+# high <- tutor_plus_data_high$`screenalignment_binary & hint_request`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+# screen alignment -> correct attempt
+# low <- tutor_plus_data_low$`screenalignment_binary & Correct_attempt`
+# high <- tutor_plus_data_high$`screenalignment_binary & Correct_attempt`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+# teacher talk -> hint req
+# low <- tutor_plus_data_low$`Talking & hint_request`
+# high <- tutor_plus_data_high$`Talking & hint_request`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+# teacher talk -> correct attempt 
+# low <- tutor_plus_data_low$`Talking & Correct_attempt`
+# high <- tutor_plus_data_high$`Talking & Correct_attempt`
+# median(low)
+# median(high)
+# wilcox.test(low, high)
+# rank_biserial(low, high)
+
+# score medians tutor + out-of-tutor
+tutor_plus_data_p_low <- as.data.frame(tutor_and_detector_and_teacher_set$points) %>%
+  filter(high_learning_rate == 0)
+tutor_plus_data_p_high <- as.data.frame(tutor_and_detector_and_teacher_set$points) %>%
+  filter(high_learning_rate == 1)
+low <- tutor_plus_data_p_low$MR1
+high <- tutor_plus_data_p_high$MR1
+median(low)
+median(high)
+wilcox.test(low, high)
+rank_biserial(low, high)
+  
+  
+```
+

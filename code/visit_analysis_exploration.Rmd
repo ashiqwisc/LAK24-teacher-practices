@@ -1,0 +1,146 @@
+---
+title: "Before/After Visit Analysis"
+---
+# 0. Necessary dependencies
+```{r}
+library(ona)
+library(tma)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(zoo)
+library(effectsize)
+```
+# 1. Specify units, codes, HOO rules
+```{r}
+# Process dataframe
+df <- read_csv("./datasets/final-sample-cb-lak24-extended.csv")
+# Replace NA with 0
+df["screenalignment_binary"][is.na(df["screenalignment_binary"])] <- 0
+df$mean_dist <-  rowSums(df[startsWith(names(df), "Stu_")], na.rm=TRUE)
+# Meta data
+learning_meta_data_cols <- c("high_learning_rate", "high_ck_gain", "high_pk_gain", "high_ck_pre", "high_pk_pre")
+df[df$actor == "teacher",learning_meta_data_cols] <- -1
+df <- df %>% drop_na(high_learning_rate)
+
+# df <- df %>%
+#   drop_na(visit_class)
+
+# Specify units
+unit_cols <- c("dayID", "periodID", "actor", "high_learning_rate" , "visit_class") # ask yeyu abt this
+
+# Specify codes
+tutor_and_detector_and_teacher <- c(
+  "Talking", 
+  # "Monitoring",
+  "Raising_hand", "Misuse_State", "Idle_State", 
+  # "Inactive", "Questioning",
+  "Struggle_State", "screenalignment_binary", 
+  "hint_request", 
+  "first_correct_attempt",
+  "Incorrect_attempt",
+  "Correct_attempt"
+)
+
+# Specify HOO and context
+HOO_rules_model <- tma:::rules(
+  dayID %in% UNIT$dayID & periodID %in% UNIT$periodID
+)
+
+context_model <- tma:::contexts(
+  x = df,
+  units = unit_cols,
+  hoo_rules = HOO_rules_model
+)
+```
+# 2. Rotate, accumulate, generate set
+```{r}
+tutor_detector_teacher_accum <- tma:::accumulate_contexts (
+    x = context_model,
+    codes = tutor_and_detector_and_teacher,
+    weight.by = function(x) { x },
+    decay.function = function(x) {
+        modality_effect <- c("tutor" = 5, "detector" = 10, "position" = 15, "observation" = 20)
+        modality <- FULL_CONTEXT[ROWS, modality]
+        duration <- FULL_CONTEXT[ROWS, {  end - start }]
+        weight <- (x < (duration + modality_effect[modality])) * 1
+        return (weight)
+    },
+    time.column = "start", 
+    return.ena.set = FALSE,
+    mode.column = "modality"
+) 
+rotation.para <- list(pre_vist = tutor_detector_teacher_accum$meta.data$visit_class == -1, 
+                      post_visit = tutor_detector_teacher_accum$meta.data$visit_class == 1)
+
+tutor_and_detector_and_teacher_set <-
+  model(tutor_detector_teacher_accum,                                
+        rotate.using ="mean",                  
+        rotation.params = rotation.para  
+        )
+```
+# 3. Plot 
+```{r}
+pre <- plot(tutor_and_detector_and_teacher_set, title = "Pre-visit")  %>%  
+  units(
+    points = tutor_and_detector_and_teacher_set$points[tutor_and_detector_and_teacher_set$points$visit_class == -1,], 
+    points_color = c("red"),
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE
+  ) %>%
+  edges (
+    weights = tutor_and_detector_and_teacher_set$line.weights[tutor_and_detector_and_teacher_set$points$visit_class == -1], 
+    edge_color = c("red")
+  ) %>%
+  nodes (
+    self_connection_color = c("red")
+  )
+print(pre)
+
+post <- plot(tutor_and_detector_and_teacher_set, title = "Post-visit")  %>% 
+  units(
+    points = tutor_and_detector_and_teacher_set$points[tutor_and_detector_and_teacher_set$points$visit_class == 1,], 
+    points_color = c("blue"),
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE
+  ) %>%
+  edges (
+    weights = tutor_and_detector_and_teacher_set$line.weights[tutor_and_detector_and_teacher_set$points$visit_class == 1], 
+    edge_color = c("blue")
+  ) %>%
+  nodes (
+    self_connection_color = c("blue")
+  )
+print(post)
+
+diff <- plot(tutor_and_detector_and_teacher_set, title = "Pre/Post-visit Subtracted")  %>%
+  units(
+    points = tutor_and_detector_and_teacher_set$points[tutor_and_detector_and_teacher_set$points$visit_class == -1,], 
+    points_color = c("red"),
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE
+  ) %>%
+  units(
+    points = tutor_and_detector_and_teacher_set$points[tutor_and_detector_and_teacher_set$points$visit_class == 1,], 
+    points_color = c("blue"),
+    show_mean = TRUE, show_points = FALSE, with_ci = TRUE
+  ) %>%
+  edges (
+    weights = colMeans(tutor_and_detector_and_teacher_set$line.weights$visit_class$`-1`) -
+                         colMeans(tutor_and_detector_and_teacher_set$line.weights$visit_class$`1`), 
+    edge_color = c("red", "blue")
+  ) %>%
+  nodes (
+    self_connection_color = c("red", "blue")
+  )
+print(diff)
+```
+# 4. Statistics
+```{r}
+# Should use Wilcoxon signed rank here
+paired_df <- as.data.frame() 
+  
+```
+
+
+
+
+
