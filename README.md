@@ -4,7 +4,7 @@ Supplementary repository for LAK24 full paper "Revealing Networks: Understanding
 
 ## Citation
 
-Borchers C., Wang Y., Karumbaiah S., Ashiq M., Shaffer D. W., & Aleven V. Revealing Networks: Understanding Effective Teacher Practices in AI-Supported Classrooms using Transmodal Ordered Network Analysis. In *Proceedings of the 14th International Learning Analytics and Knowledge Conference* (LAK). ACM. 
+Borchers C., Wang Y., Karumbaiah S., Ashiq M., Shaffer D. W., & Aleven V. (2024). Revealing Networks: Understanding Effective Teacher Practices in AI-Supported Classrooms using Transmodal Ordered Network Analysis. In *Proceedings of the 14th International Learning Analytics and Knowledge Conference* (LAK). ACM. 
 ```
 @inproceedings{borchers2024revealing,
   title = {Revealing Networks: Understanding Effective Teacher Practices in AI-Supported Classrooms. Using Transmodal Ordered Network Analysis},
