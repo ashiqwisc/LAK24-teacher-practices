@@ -44,6 +44,8 @@ join_this <- d_learn %>%
 
 d <- read_delim('./datasets/tutor_log_anonymized.tsv', delim ='\t') %>% 
   janitor::clean_names() %>% 
+  select(-school) %>% 
+  rename_with(~str_remove(., "^(cf)_"), starts_with("cf_")) %>% 
   arrange(anon_student_id, problem_name, step_name, desc(time)) %>% 
   distinct(anon_student_id, problem_name, step_name, .keep_all = TRUE) %>% 
   mutate(outcome_bin = case_when(
@@ -143,6 +145,8 @@ actor_period_combs <- df %>%
 # Read in tutor log dataset
 tutor_log <- read_delim('./datasets/tutor_log_anonymized.tsv', delim ='\t') %>%
   janitor:::clean_names() %>%
+  select(-school) %>%
+  rename_with(~str_remove(., "^(cf)_"), starts_with("cf_")) %>% 
   filter(outcome %in% c('CORRECT', 'INCORRECT', 'HINT')) %>%
   mutate(opportunity_count = ifelse(student_response_type == "ATTEMPT" & attempt_at_step == 1 & is_last_attempt == 1 & outcome == "CORRECT", 1, 0)) %>%
   mutate(first_correct_attempt = ifelse(attempt_at_step == 1 & outcome == "CORRECT", 1, 0)) %>%
@@ -166,6 +170,8 @@ tutor_log <- read_delim('./datasets/tutor_log_anonymized.tsv', delim ='\t') %>%
 # number of correct attempts in tutor_log.tsv for days 23rd, 24th, 25th
 correct_attempts_tutor <- read_delim('./datasets/tutor_log_anonymized.tsv', delim ='\t') %>%
   janitor:::clean_names() %>%
+  select(-school) %>%
+  rename_with(~str_remove(., "^(cf)_"), starts_with("cf_")) %>% 
   filter(outcome %in% c('CORRECT') & student_response_type == "ATTEMPT") %>%
   rename(start = time) %>%
   mutate(start = round(as.numeric(ymd_hms(start)))) %>%

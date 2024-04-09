@@ -71,6 +71,10 @@ tutor_detector_teacher_accum <- tma:::accumulate_contexts (
     return.ena.set = FALSE,
     mode.column = "modality"
 ) 
+
+tutor_detector_teacher_accum$meta.data <- tutor_detector_teacher_accum$meta.data %>%
+  mutate(visit_class = ifelse(is.na(visit_class), 0, visit_class))
+
 rotation.para <- list(pre_vist = tutor_detector_teacher_accum$meta.data$visit_class == -1, 
                       post_visit = tutor_detector_teacher_accum$meta.data$visit_class == 1)
 
@@ -136,7 +140,7 @@ print(diff)
 # 4. Statistics
 ```{r}
 # Should use Wilcoxon signed rank here
-paired_df <- as.data.frame() 
+# paired_df <- as.data.frame() 
   
 ```
 
